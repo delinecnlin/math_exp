@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>数学艺术</title>
+<style>
+  body {
+    font-family: sans-serif;
+    padding: 20px;
+  }
+  .decimal-display {
+    margin-bottom: 20px;
+    font-size: 18px;
+  }
+  .grid-wrapper {
+    display: flex;
+    gap: 50px;
+    margin-top: 20px;
+  }
+  .grid-container {
+    display: inline-block;
+    border: 2px solid #333;
+  }
+  .grid-row {
+    display: flex;
+  }
+  .grid-cell {
+    width: 20px;
+    height: 20px;
+    border: 1px solid #ccc;
+    box-sizing: border-box;
+  }
+
+  /* 按钮样式 */
+  button {
+    background-color: #b55455;
+    color: white;
+    border: none;
+    padding: 15px 30px;
+    font-size: 18px;
+    font-weight: bold;
+    cursor: pointer;
+    border-radius: 8px;
+    margin: 15px 10px;
+  }
+
+  button:hover {
+    background-color: #9a484a;
+  }
+</style>
+</head>
+<body>
+
+<h1>数学艺术</h1>
+
+<div>
+  <h2>请输入分数</h2>
+  <label>分子: <input type="number" id="numerator" value="1"></label>
+  <label>分母: <input type="number" id="denominator" value="7"></label>
+  <button id="generateDecimal">生成循环小数</button>
+  
+  <div id="decimalSection" style="margin-top:10px;">
+    <div class="decimal-display" id="decimalDisplay"></div>
+    <div>
+      <h3>色彩配置（可选）</h3>
+      <div id="digitColors"></div>
+    </div>
+  </div>
+</div>
+
+<div>
+  <h2>画布尺寸设置</h2>
+  <label>行数: <input type="number" id="rows" value="19"></label>
+  <label>列数: <input type="number" id="cols" value="19"></label>
+</div>
+
+<div>
+  <h2>排列方式（左侧画布）</h2>
+  <select id="fillMode">
+    <option value="1">1. 从中间顺时针螺旋</option>
+    <option value="2">2. 从中间逆时针螺旋</option>
+    <option value="3">3. 从左上角逐行(左→右)</option>
+    <option value="4">4. 从右上角逐行(右→左)</option>
+    <option value="5">5. 从左上角斜向对角线填充</option>
+    <option value="6">6. 从左上角逐列(上→下)</option>
+  </select>
+  
+  <label>着色间隔(毫秒): <input type="number" id="colorInterval" value="100"></label>
+  <button id="fillGrid">开始绘制（左侧）</button>
+</div>
+
+<div class="grid-wrapper">
+  <div>
+    <h2>左侧画布（自动填色）</h2>
+    <div class="grid-container" id="gridContainer"></div>
+    <button id="exportBtn">导出左侧画布</button>
+  </div>
+  
+  <div>
+    <h2>右侧空白画布（请发挥想象自由点击填色）</h2>
+    <div class="grid-container" id="gridContainer2"></div>
+    <button id="exportBtn2">导出右侧画布</button>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+<script>
+// 计算循环小数
+function getRepeatingDecimal(numerator, denominator) {
+  if (denominator === 0) {
+    return null;
+  }
+  
+  let sign = (numerator * denominator < 0) ? "-" : "";
+  numerator = Math.abs(numerator);
+  denominator = Math.abs(denominator);
+
+  let intPart = Math.floor(numerator / denominator);
+  let remainder = numerator % denominator;
+
+  if (remainder === 0) {
+    return {intPart: sign + intPart, nonRepeat: "", repeat: ""};
+  }
+
+  let decimals = [];
+  let remainderIndexMap = {};
+  let repeatStartIndex = -1;
+
+  let idx = 0;
+  while (remainder !== 0) {
+    if (remainderIndexMap.hasOwnProperty(remainder)) {
+      repeatStartIndex = remainderIndexMap[remainder];
+      break;
+    }
+    remainderIndexMap[remainder] = idx;
+    remainder *= 10;
+    let d = Math.floor(remainder / denominator);
+    decimals.push(d);
+    remainder %= denominator;
+    idx++;
+  }
+
+  let nonRepeat = "";
+  let repeat = "";
+
+  if (repeatStartIndex !== -1) {
+    nonRepeat = decimals.slice(0, repeatStartIndex).join('');
+    repeat = decimals.slice(repeatStartIndex).join('');
+  } else {
+    nonRepeat = decimals.join('');
+  }
+
+  return {
+    intPart: sign + intPart,
+    nonRepeat: nonRepeat,
+    repeat: repeat
+  };
+}
+
+function generateDigitColors(digits) {
+  let digitColorMap = {};
+  digits.forEach(d => {
+    digitColorMap[d] = getRandomColor();
+  });
+  return digitColorMap;
+}
+
+function getRandomColor() {
+  return '#' + Math.floor(Math.random()*16777215).toString(16).padStart(6, '0');
+}
+
+function getInfiniteSequence(nonRepeat, repeat, length = 10000) {
+  // 生成超长的序列，避免点击用完
+  let baseStr = nonRepeat + repeat;
+  let repeatPart = repeat || "";
+  
+  let fullSeq = baseStr;
+  if (repeatPart) {
+    while (fullSeq.length < length) {
+      fullSeq += repeatPart;
+    }
+  } else {
+    // 若无循环节，则直接重复整个部分
+    while (fullSeq.length < length) {
+      fullSeq += baseStr;
+    }
+  }
+  return fullSeq.slice(0, length).split('');
+}
+
+function displayDecimal(intPart, nonRepeat, repeat, digitColorMap) {
+  let container = document.getElementById("decimalDisplay");
+  container.innerHTML = "";
+  let fullStr = intPart + "." + nonRepeat + (repeat ? "(" + repeat + ")" : "");
+
+  for (let ch of fullStr) {
+    let span = document.createElement("span");
+    if (/\d/.test(ch)) {
+      span.style.color = digitColorMap[ch] || "#000";
+    }
+    span.textContent = ch;
+    container.appendChild(span);
+  }
+}
+
+function generateColorControls(uniqueDigits, digitColorMap) {
+  let container = document.getElementById("digitColors");
+  container.innerHTML = "";
+  uniqueDigits.forEach(d => {
+    let label = document.createElement("label");
+    label.style.marginRight = "10px";
+    label.textContent = `数字 ${d}: `;
+    let input = document.createElement("input");
+    input.type = "color";
+    input.value = digitColorMap[d];
+    input.addEventListener("change", () => {
+      digitColorMap[d] = input.value;
+    });
+    label.appendChild(input);
+    container.appendChild(label);
+  });
+}
+
+function createGrid(containerId, rows, cols) {
+  let gridContainer = document.getElementById(containerId);
+  gridContainer.innerHTML = "";
+  for (let r = 0; r < rows; r++) {
+    let rowDiv = document.createElement("div");
+    rowDiv.className = "grid-row";
+    for (let c = 0; c < cols; c++) {
+      let cell = document.createElement("div");
+      cell.className = "grid-cell";
+      cell.dataset.row = r;
+      cell.dataset.col = c;
+      rowDiv.appendChild(cell);
+    }
+    gridContainer.appendChild(rowDiv);
+  }
+}
+
+// 路径生成函数（与之前相同）
+function spiralPathClockwise(rows, cols) {
+  let path = [];
+  let center = [Math.floor(rows/2), Math.floor(cols/2)];
+  let directions = [[0,1],[1,0],[0,-1],[-1,0]]; // 右、下、左、上
+  let steps = 1;
+  let curPos = [center[0], center[1]];
+  path.push([...curPos]);
+  let dirIndex = 0;
+
+  while (path.length < rows * cols) {
+    for (let i = 0; i < 2; i++) {
+      for (let s = 0; s < steps; s++) {
+        curPos[0] += directions[dirIndex][0];
+        curPos[1] += directions[dirIndex][1];
+        if (curPos[0]>=0 && curPos[0]<rows && curPos[1]>=0 && curPos[1]<cols) {
+          path.push([...curPos]);
+        }
+        if (path.length >= rows * cols) break;
+      }
+      dirIndex = (dirIndex + 1) % 4;
+      if (path.length >= rows * cols) break;
+    }
+    steps++;
+  }
+  return path;
+}
+
+function spiralPathCounterClockwise(rows, cols) {
+  let path = [];
+  let center = [Math.floor(rows/2), Math.floor(cols/2)];
+  let directions = [[-1,0],[0,-1],[1,0],[0,1]]; // 上、左、下、右
+  let steps = 1;
+  let curPos = [center[0], center[1]];
+  path.push([...curPos]);
+  let dirIndex = 0;
+
+  while (path.length < rows * cols) {
+    for (let i = 0; i < 2; i++) {
+      for (let s = 0; s < steps; s++) {
+        curPos[0] += directions[dirIndex][0];
+        curPos[1] += directions[dirIndex][1];
+        if (curPos[0]>=0 && curPos[0]<rows && curPos[1]>=0 && curPos[1]<cols) {
+          path.push([...curPos]);
+        }
+        if (path.length >= rows * cols) break;
+      }
+      dirIndex = (dirIndex + 1) % 4;
+      if (path.length >= rows * cols) break;
+    }
+    steps++;
+  }
+  return path;
+}
+
+function rowWiseLeftToRight(rows, cols) {
+  let path = [];
+  for (let r=0; r<rows; r++) {
+    for (let c=0; c<cols; c++) {
+      path.push([r,c]);
+    }
+  }
+  return path;
+}
+
+function rowWiseRightToLeft(rows, cols) {
+  let path = [];
+  for (let r=0; r<rows; r++) {
+    for (let c=cols-1; c>=0; c--) {
+      path.push([r,c]);
+    }
+  }
+  return path;
+}
+
+function diagonalFill(rows, cols) {
+  let path = [];
+  for (let sum=0; sum<=(rows-1)+(cols-1); sum++) {
+    let lineCells = [];
+    for (let r=0; r<rows; r++) {
+      let c = sum - r;
+      if (c>=0 && c<cols) {
+        lineCells.push([r,c]);
+      }
+    }
+    if (sum % 2 === 0) {
+      lineCells.reverse();
+    }
+    path = path.concat(lineCells);
+  }
+  return path;
+}
+
+function columnWiseTopToBottom(rows, cols) {
+  let path = [];
+  for (let c=0; c<cols; c++) {
+    for (let r=0; r<rows; r++) {
+      path.push([r,c]);
+    }
+  }
+  return path;
+}
+
+// 全局数据存储
+let decimalData = null;
+let userPaintSeqIndex = 0; // 学生点击填色序列当前索引
+
+document.getElementById("generateDecimal").addEventListener("click", function(){
+  const numerator = parseInt(document.getElementById("numerator").value);
+  const denominator = parseInt(document.getElementById("denominator").value);
+  let result = getRepeatingDecimal(numerator, denominator);
+  if (!result) {
+    alert("分母不能为0");
+    return;
+  }
+
+  let {intPart, nonRepeat, repeat} = result;
+  let allDigits = (nonRepeat + repeat).split('');
+  let uniqueDigits = Array.from(new Set(allDigits));
+  let digitColorMap = generateDigitColors(uniqueDigits);
+
+  displayDecimal(intPart, nonRepeat, repeat, digitColorMap);
+  generateColorControls(uniqueDigits, digitColorMap);
+
+  // 获取用户指定的行列数
+  const rows = parseInt(document.getElementById("rows").value);
+  const cols = parseInt(document.getElementById("cols").value);
+
+  // 根据行列数生成至少 rows*cols 长度的序列（此处用10000确保足够大）
+  let seq = getInfiniteSequence(nonRepeat, repeat, 10000);
+
+  decimalData = {intPart, nonRepeat, repeat, digitColorMap, uniqueDigits, seq, rows, cols};
+
+  // 每次生成新的小数后，重建两块画布
+  createGrid("gridContainer", rows, cols);
+  createGrid("gridContainer2", rows, cols);
+  userPaintSeqIndex = 0;
+});
+
+document.getElementById("fillGrid").addEventListener("click", function() {
+  if (!decimalData) {
+    alert("请先生成循环小数");
+    return;
+  }
+
+  const {nonRepeat, repeat, digitColorMap, seq, rows, cols} = decimalData;
+  const interval = parseInt(document.getElementById("colorInterval").value);
+  const mode = document.getElementById("fillMode").value;
+
+  // 清空并重建左画布
+  createGrid("gridContainer", rows, cols);
+
+  let path;
+  switch(mode) {
+    case "1":
+      path = spiralPathClockwise(rows, cols);
+      break;
+    case "2":
+      path = spiralPathCounterClockwise(rows, cols);
+      break;
+    case "3":
+      path = rowWiseLeftToRight(rows, cols);
+      break;
+    case "4":
+      path = rowWiseRightToLeft(rows, cols);
+      break;
+    case "5":
+      path = diagonalFill(rows, cols);
+      break;
+    case "6":
+      path = columnWiseTopToBottom(rows, cols);
+      break;
+    default:
+      path = rowWiseLeftToRight(rows, cols);
+  }
+
+  let gridContainer = document.getElementById("gridContainer");
+  let cells = gridContainer.getElementsByClassName("grid-cell");
+  let cellMap = {};
+  for (let cell of cells) {
+    let r = parseInt(cell.dataset.row);
+    let c = parseInt(cell.dataset.col);
+    cellMap[`${r},${c}`] = cell;
+  }
+
+  let colorQueue = path.map((pos, i) => {
+    let d = seq[i]; // 对应序列中的数字
+    return {
+      row: pos[0],
+      col: pos[1],
+      color: digitColorMap[d] || "#000"
+    };
+  });
+
+  let index = 0;
+  let timer = setInterval(() => {
+    if (index >= colorQueue.length) {
+      clearInterval(timer);
+      return;
+    }
+    let item = colorQueue[index];
+    let cell = cellMap[`${item.row},${item.col}`];
+    if (cell) {
+      cell.style.backgroundColor = item.color;
+    }
+    index++;
+  }, interval);
+});
+
+// 学生点击右侧画布填色逻辑
+document.getElementById("gridContainer2").addEventListener("click", function(e){
+  if (!decimalData) {
+    alert("请先生成循环小数");
+    return;
+  }
+  if (!e.target.classList.contains("grid-cell")) return;
+  
+  const {seq, digitColorMap} = decimalData;
+  let cell = e.target;
+  let d = seq[userPaintSeqIndex % seq.length];
+  cell.style.backgroundColor = digitColorMap[d] || "#000";
+  userPaintSeqIndex++;
+});
+
+// 导出左画布
+document.getElementById("exportBtn").addEventListener("click", function(){
+  let gridContainer = document.getElementById("gridContainer");
+  html2canvas(gridContainer).then(canvas => {
+    let link = document.createElement('a');
+    link.download = 'left_canvas.png';
+    link.href = canvas.toDataURL();
+    link.click();
+  });
+});
+
+// 导出右画布
+document.getElementById("exportBtn2").addEventListener("click", function(){
+  let gridContainer2 = document.getElementById("gridContainer2");
+  html2canvas(gridContainer2).then(canvas => {
+    let link = document.createElement('a');
+    link.download = 'right_canvas.png';
+    link.href = canvas.toDataURL();
+    link.click();
+  });
+});
+</script>
+</body>
+</html>
