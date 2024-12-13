@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>数学艺术</title>
+<title>数字艺术</title>
 <style>
   body {
     font-family: sans-serif;
@@ -26,13 +26,12 @@
     display: flex;
   }
   .grid-cell {
-    width: 20px;
-    height: 20px;
+    width: 15px;
+    height: 15px;
     border: 1px solid #ccc;
     box-sizing: border-box;
   }
 
-  /* 按钮样式 */
   button {
     background-color: #b55455;
     color: white;
@@ -52,10 +51,14 @@
 </head>
 <body>
 
-<h1>数学艺术</h1>
+<div>
+  <h3>画布尺寸：</h3>
+  <label>行数: <input type="number" id="rows" value="19"></label>
+  <label>列数: <input type="number" id="cols" value="19"></label>
+</div>
 
 <div>
-  <h2>请输入分数</h2>
+  <h3>请输入分数</h3>
   <label>分子: <input type="number" id="numerator" value="1"></label>
   <label>分母: <input type="number" id="denominator" value="7"></label>
   <button id="generateDecimal">生成循环小数</button>
@@ -63,20 +66,16 @@
   <div id="decimalSection" style="margin-top:10px;">
     <div class="decimal-display" id="decimalDisplay"></div>
     <div>
-      <h3>色彩配置（可选）</h3>
+      <h3>色彩配置：</h3>
       <div id="digitColors"></div>
     </div>
   </div>
 </div>
 
-<div>
-  <h2>画布尺寸设置</h2>
-  <label>行数: <input type="number" id="rows" value="19"></label>
-  <label>列数: <input type="number" id="cols" value="19"></label>
-</div>
+
 
 <div>
-  <h2>排列方式（左侧画布）</h2>
+  <h3>排列方式：</h3>
   <select id="fillMode">
     <option value="1">1. 从中间顺时针螺旋</option>
     <option value="2">2. 从中间逆时针螺旋</option>
@@ -92,19 +91,21 @@
 
 <div class="grid-wrapper">
   <div>
-    <h2>左侧画布（自动填色）</h2>
+    <h5>左侧画布（自动填色）</h5>
     <div class="grid-container" id="gridContainer"></div>
     <button id="exportBtn">导出左侧画布</button>
   </div>
   
   <div>
-    <h2>右侧空白画布（请发挥想象自由点击填色）</h2>
+    <h5>右侧空白画布（点击填色，不覆盖，可撤销）</h5>
     <div class="grid-container" id="gridContainer2"></div>
+    <button id="undoBtn">撤销上一步</button>
     <button id="exportBtn2">导出右侧画布</button>
   </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+<!-- 本地引入html2canvas.js -->
+<script src="https://www.de-line.net/html2canvas.min.js"></script>
 <script>
 // 计算循环小数
 function getRepeatingDecimal(numerator, denominator) {
@@ -171,7 +172,6 @@ function getRandomColor() {
 }
 
 function getInfiniteSequence(nonRepeat, repeat, length = 10000) {
-  // 生成超长的序列，避免点击用完
   let baseStr = nonRepeat + repeat;
   let repeatPart = repeat || "";
   
@@ -181,7 +181,6 @@ function getInfiniteSequence(nonRepeat, repeat, length = 10000) {
       fullSeq += repeatPart;
     }
   } else {
-    // 若无循环节，则直接重复整个部分
     while (fullSeq.length < length) {
       fullSeq += baseStr;
     }
@@ -239,7 +238,7 @@ function createGrid(containerId, rows, cols) {
   }
 }
 
-// 路径生成函数（与之前相同）
+// 路径生成函数
 function spiralPathClockwise(rows, cols) {
   let path = [];
   let center = [Math.floor(rows/2), Math.floor(cols/2)];
@@ -345,6 +344,7 @@ function columnWiseTopToBottom(rows, cols) {
 // 全局数据存储
 let decimalData = null;
 let userPaintSeqIndex = 0; // 学生点击填色序列当前索引
+let userActions = []; // 用于记录用户在右侧画布的操作，以支持撤销
 
 document.getElementById("generateDecimal").addEventListener("click", function(){
   const numerator = parseInt(document.getElementById("numerator").value);
@@ -363,19 +363,18 @@ document.getElementById("generateDecimal").addEventListener("click", function(){
   displayDecimal(intPart, nonRepeat, repeat, digitColorMap);
   generateColorControls(uniqueDigits, digitColorMap);
 
-  // 获取用户指定的行列数
   const rows = parseInt(document.getElementById("rows").value);
   const cols = parseInt(document.getElementById("cols").value);
 
-  // 根据行列数生成至少 rows*cols 长度的序列（此处用10000确保足够大）
   let seq = getInfiniteSequence(nonRepeat, repeat, 10000);
 
   decimalData = {intPart, nonRepeat, repeat, digitColorMap, uniqueDigits, seq, rows, cols};
 
-  // 每次生成新的小数后，重建两块画布
+  // 重建两块画布
   createGrid("gridContainer", rows, cols);
   createGrid("gridContainer2", rows, cols);
   userPaintSeqIndex = 0;
+  userActions = [];
 });
 
 document.getElementById("fillGrid").addEventListener("click", function() {
@@ -384,11 +383,10 @@ document.getElementById("fillGrid").addEventListener("click", function() {
     return;
   }
 
-  const {nonRepeat, repeat, digitColorMap, seq, rows, cols} = decimalData;
+  const {digitColorMap, seq, rows, cols} = decimalData;
   const interval = parseInt(document.getElementById("colorInterval").value);
   const mode = document.getElementById("fillMode").value;
 
-  // 清空并重建左画布
   createGrid("gridContainer", rows, cols);
 
   let path;
@@ -425,7 +423,7 @@ document.getElementById("fillGrid").addEventListener("click", function() {
   }
 
   let colorQueue = path.map((pos, i) => {
-    let d = seq[i]; // 对应序列中的数字
+    let d = seq[i];
     return {
       row: pos[0],
       col: pos[1],
@@ -448,7 +446,7 @@ document.getElementById("fillGrid").addEventListener("click", function() {
   }, interval);
 });
 
-// 学生点击右侧画布填色逻辑
+// 右侧画布点击填色逻辑（不允许覆盖和可撤销）
 document.getElementById("gridContainer2").addEventListener("click", function(e){
   if (!decimalData) {
     alert("请先生成循环小数");
@@ -458,9 +456,46 @@ document.getElementById("gridContainer2").addEventListener("click", function(e){
   
   const {seq, digitColorMap} = decimalData;
   let cell = e.target;
+
+  // 如果该格子已有颜色，则不允许覆盖
+  if (cell.style.backgroundColor && cell.style.backgroundColor.trim() !== "") {
+    alert("该格子已被着色，不能重复覆盖！");
+    return;
+  }
+
   let d = seq[userPaintSeqIndex % seq.length];
-  cell.style.backgroundColor = digitColorMap[d] || "#000";
+  let newColor = digitColorMap[d] || "#000";
+  let oldColor = cell.style.backgroundColor || ""; // 之前是空白
+  
+  // 应用新颜色
+  cell.style.backgroundColor = newColor;
   userPaintSeqIndex++;
+
+  // 记录操作
+  let r = cell.dataset.row;
+  let c = cell.dataset.col;
+  userActions.push({row: r, col: c, oldColor: oldColor, newColor: newColor});
+});
+
+// 撤销功能
+document.getElementById("undoBtn").addEventListener("click", function(){
+  if (userActions.length === 0) {
+    alert("没有可撤销的操作");
+    return;
+  }
+  let lastAction = userActions.pop();
+  let rows = decimalData.rows;
+  let cols = decimalData.cols;
+  
+  let gridContainer2 = document.getElementById("gridContainer2");
+  let cell = gridContainer2.querySelector(`.grid-cell[data-row='${lastAction.row}'][data-col='${lastAction.col}']`);
+  if (cell) {
+    cell.style.backgroundColor = lastAction.oldColor;
+  }
+
+  // 撤销不影响userPaintSeqIndex（因为我们是把序列无限长的，即使不回退序列进度也行）
+  // 如果想让撤销也回退序列进度，可在这里 userPaintSeqIndex--。
+  // 但可能引起逻辑混乱，因为相同格子不让覆盖，此处我们选择不回退seqIndex。
 });
 
 // 导出左画布
